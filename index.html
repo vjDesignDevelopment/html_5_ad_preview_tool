@@ -1,90 +1,148 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HTML5 Ad Preview Tool</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <style>
-    body { font-family: sans-serif; padding: 2rem; background: #f5f5f5; }
-    .drop-zone { border: 2px dashed #007BFF; padding: 2rem; text-align: center; background: white; cursor: pointer; }
-    iframe { width: 100%; height: 300px; border: 1px solid #ccc; margin-top: 1rem; background: white; }
-    .info { margin-top: 1rem; font-weight: bold; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HTML5 Ad Preview Tool</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    padding: 1rem;
+    max-width: 900px;
+    margin: auto;
+  }
+  h1 {
+    text-align: center;
+  }
+  #drop-area {
+    border: 3px dashed #007BFF;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    color: #007BFF;
+    cursor: pointer;
+    margin-bottom: 1rem;
+  }
+  #drop-area.dragover {
+    background-color: #e0f0ff;
+  }
+  #preview-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+  }
+  .preview-box {
+    flex: 1 1 300px;
+    border: 1px solid #ccc;
+    padding: 0.5rem;
+    box-sizing: border-box;
+    border-radius: 8px;
+  }
+  iframe {
+    width: 100%;
+    height: 300px;
+    border: none;
+  }
+  @media (max-width: 600px) {
+    iframe {
+      height: 200px;
+    }
+  }
+  .file-info {
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+  }
+</style>
 </head>
 <body>
-  <h1>HTML5 Ad Preview Tool</h1>
-  <div id="drop-zone" class="drop-zone">Drag & drop your HTML5 .zip file here or click to upload</div>
-  <input type="file" id="file-input" accept=".zip" style="display: none;" />
-  <div id="info" class="info"></div>
-  <iframe id="preview" sandbox="allow-scripts allow-same-origin"></iframe>
 
-  <script>
-    const dropZone = document.getElementById('drop-zone');
-    const fileInput = document.getElementById('file-input');
-    const preview = document.getElementById('preview');
-    const info = document.getElementById('info');
+<h1>HTML5 Ad Preview Tool</h1>
 
-    dropZone.addEventListener('click', () => fileInput.click());
-    dropZone.addEventListener('dragover', e => {
-      e.preventDefault();
-      dropZone.style.borderColor = '#28a745';
-    });
-    dropZone.addEventListener('dragleave', () => {
-      dropZone.style.borderColor = '#007BFF';
-    });
-    dropZone.addEventListener('drop', e => {
-      e.preventDefault();
-      dropZone.style.borderColor = '#007BFF';
-      handleFile(e.dataTransfer.files[0]);
-    });
-    fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+<div id="drop-area">
+  Drag & drop your ZIP files here or click to select multiple files
+  <input type="file" id="fileElem" multiple accept=".zip" style="display:none" />
+</div>
 
-    function handleFile(file) {
-      if (!file || !file.name.endsWith('.zip')) {
-        info.textContent = 'Please upload a valid .zip file.';
+<div id="preview-container"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+<script>
+  const dropArea = document.getElementById('drop-area');
+  const fileElem = document.getElementById('fileElem');
+  const previewContainer = document.getElementById('preview-container');
+
+  dropArea.addEventListener('click', () => fileElem.click());
+
+  dropArea.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropArea.classList.add('dragover');
+  });
+
+  dropArea.addEventListener('dragleave', e => {
+    dropArea.classList.remove('dragover');
+  });
+
+  dropArea.addEventListener('drop', e => {
+    e.preventDefault();
+    dropArea.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+  });
+
+  fileElem.addEventListener('change', () => {
+    handleFiles(fileElem.files);
+  });
+
+  function handleFiles(files) {
+    previewContainer.innerHTML = ''; // Clear previous previews
+    Array.from(files).forEach(file => {
+      if (file.name.endsWith('.zip')) {
+        previewZipFile(file);
+      } else {
+        alert('Only ZIP files are supported');
+      }
+    });
+  }
+
+  async function previewZipFile(file) {
+    const zip = new JSZip();
+    try {
+      const content = await zip.loadAsync(file);
+      // Find an HTML file inside the ZIP (e.g., index.html or first .html)
+      let htmlFileName = Object.keys(content.files).find(name => name.endsWith('.html'));
+      if (!htmlFileName) {
+        alert('No HTML file found inside ZIP: ' + file.name);
         return;
       }
+      const htmlFile = content.files[htmlFileName];
+      const htmlContent = await htmlFile.async('text');
 
-      info.textContent = `Total Size: ${(file.size / 1024).toFixed(2)} KB`;
+      // Create an iframe to preview
+      const iframe = document.createElement('iframe');
+      // Create a Blob URL for the iframe to load the HTML content
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
 
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const zip = await JSZip.loadAsync(e.target.result);
-        const indexFile = zip.file(/index\.html$/i)[0];
-        if (!indexFile) {
-          info.textContent += '\nError: index.html not found in ZIP.';
-          return;
-        }
+      iframe.src = url;
 
-        const blobUrls = {};
-        await Promise.all(Object.keys(zip.files).map(async filename => {
-          const file = zip.files[filename];
-          if (!file.dir) {
-            const blob = await file.async('blob');
-            blobUrls[filename] = URL.createObjectURL(blob);
-          }
-        }));
+      // Create a preview box container
+      const previewBox = document.createElement('div');
+      previewBox.className = 'preview-box';
 
-        const htmlText = await indexFile.async('text');
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlText, 'text/html');
+      // Show file info
+      const info = document.createElement('div');
+      info.className = 'file-info';
+      info.textContent = `File: ${file.name} — Size: ${(file.size / 1024).toFixed(1)} KB`;
 
-        // Rewriting relative paths to blob URLs
-        doc.querySelectorAll('[src], [href]').forEach(el => {
-          const attr = el.hasAttribute('src') ? 'src' : 'href';
-          const val = el.getAttribute(attr);
-          if (blobUrls[val]) {
-            el.setAttribute(attr, blobUrls[val]);
-          }
-        });
-
-        const blob = new Blob([doc.documentElement.outerHTML], { type: 'text/html' });
-        preview.src = URL.createObjectURL(blob);
-      };
-
-      reader.readAsArrayBuffer(file);
+      previewBox.appendChild(iframe);
+      previewBox.appendChild(info);
+      previewContainer.appendChild(previewBox);
+    } catch (error) {
+      alert('Error reading ZIP file: ' + file.name);
+      console.error(error);
     }
-  </script>
+  }
+</script>
+
 </body>
 </html>
