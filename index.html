@@ -1,67 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>HTML5 Ad Preview Tool</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    padding: 1rem;
-    max-width: 900px;
-    margin: auto;
-  }
-  h1 {
-    text-align: center;
-  }
-  #drop-area {
-    border: 3px dashed #007BFF;
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
-    color: #007BFF;
-    cursor: pointer;
-    margin-bottom: 1rem;
-  }
-  #drop-area.dragover {
-    background-color: #e0f0ff;
-  }
-  #preview-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    justify-content: center;
-  }
-  .preview-box {
-    flex: 1 1 300px;
-    border: 1px solid #ccc;
-    padding: 0.5rem;
-    box-sizing: border-box;
-    border-radius: 8px;
-  }
-  iframe {
-    width: 100%;
-    height: 300px;
-    border: none;
-  }
-  @media (max-width: 600px) {
-    iframe {
-      height: 200px;
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HTML5 Ad Preview Tool with Verification</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 1rem;
+      max-width: 1000px;
+      margin: auto;
     }
-  }
-  .file-info {
-    font-size: 0.9rem;
-    margin-top: 0.5rem;
-  }
-</style>
+    h1 {
+      text-align: center;
+    }
+    #drop-area {
+      border: 3px dashed #007BFF;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      color: #007BFF;
+      cursor: pointer;
+      margin-bottom: 1rem;
+    }
+    #drop-area.dragover {
+      background-color: #e0f0ff;
+    }
+    #preview-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+    }
+    .preview-box {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      border-radius: 8px;
+      text-align: center;
+      overflow: auto;
+      background: #f9f9f9;
+      width: fit-content;
+      max-width: 320px;
+    }
+    iframe {
+      border: none;
+      display: block;
+      max-width: 100%;
+      margin: auto;
+    }
+    .file-info {
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+    }
+    ul.checklist {
+      text-align: left;
+      margin-top: 0.5rem;
+      padding-left: 20px;
+    }
+    ul.checklist li {
+      margin-bottom: 0.2rem;
+      font-weight: 600;
+    }
+  </style>
 </head>
 <body>
 
-<h1>HTML5 Ad Preview Tool</h1>
+<h1>HTML5 Ad Preview Tool with Verification</h1>
 
 <div id="drop-area">
   Drag & drop your ZIP files here or click to select multiple files
-  <input type="file" id="fileElem" multiple accept=".zip" style="display:none" />
+  <input type="file" id="fileElem" multiple accept=".zip" style="display:none;" />
 </div>
 
 <div id="preview-container"></div>
@@ -73,74 +81,163 @@
   const previewContainer = document.getElementById('preview-container');
 
   dropArea.addEventListener('click', () => fileElem.click());
-
   dropArea.addEventListener('dragover', e => {
     e.preventDefault();
     dropArea.classList.add('dragover');
   });
-
-  dropArea.addEventListener('dragleave', e => {
+  dropArea.addEventListener('dragleave', () => {
     dropArea.classList.remove('dragover');
   });
-
   dropArea.addEventListener('drop', e => {
     e.preventDefault();
     dropArea.classList.remove('dragover');
     handleFiles(e.dataTransfer.files);
   });
-
   fileElem.addEventListener('change', () => {
     handleFiles(fileElem.files);
   });
 
-  function handleFiles(files) {
-    previewContainer.innerHTML = ''; // Clear previous previews
-    Array.from(files).forEach(file => {
+  async function handleFiles(files) {
+    previewContainer.innerHTML = '';
+    const previews = [];
+
+    for (const file of files) {
       if (file.name.endsWith('.zip')) {
-        previewZipFile(file);
-      } else {
-        alert('Only ZIP files are supported');
+        const box = await processZip(file);
+        if (box) previews.push(box);
       }
+    }
+
+    // Sort previews by area
+    previews.sort((a, b) => {
+      const areaA = a.dataset.width * a.dataset.height;
+      const areaB = b.dataset.width * b.dataset.height;
+      return areaB - areaA;
     });
+
+    previews.forEach(box => previewContainer.appendChild(box));
   }
 
-  async function previewZipFile(file) {
-    const zip = new JSZip();
+  async function processZip(file) {
     try {
-      const content = await zip.loadAsync(file);
-      // Find an HTML file inside the ZIP (e.g., index.html or first .html)
-      let htmlFileName = Object.keys(content.files).find(name => name.endsWith('.html'));
+      const zip = await JSZip.loadAsync(file);
+      const blobMap = {};
+
+      await Promise.all(Object.keys(zip.files).map(async name => {
+        const entry = zip.files[name];
+        if (!entry.dir) {
+          const blob = await entry.async('blob');
+          blobMap[name] = URL.createObjectURL(blob);
+        }
+      }));
+
+      const htmlFileName = Object.keys(zip.files).find(name => name.endsWith('.html'));
       if (!htmlFileName) {
-        alert('No HTML file found inside ZIP: ' + file.name);
-        return;
+        alert(`No HTML file found in ZIP: ${file.name}`);
+        return null;
       }
-      const htmlFile = content.files[htmlFileName];
-      const htmlContent = await htmlFile.async('text');
 
-      // Create an iframe to preview
+      let htmlContent = await zip.files[htmlFileName].async('text');
+
+      // Rewrite relative URLs
+      htmlContent = htmlContent.replace(/(src|href)=["']([^"']+)["']/g, (match, attr, url) => {
+        if (url.startsWith('http') || url.startsWith('//')) return match;
+        const cleanPath = url.replace(/^\.?\//, '');
+        return blobMap[cleanPath] ? `${attr}="${blobMap[cleanPath]}"` : match;
+      });
+
+      const checks = runChecks(htmlContent, zip, htmlFileName);
+
       const iframe = document.createElement('iframe');
-      // Create a Blob URL for the iframe to load the HTML content
-      const blob = new Blob([htmlContent], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
+      iframe.scrolling = 'no';
 
-      iframe.src = url;
-
-      // Create a preview box container
       const previewBox = document.createElement('div');
       previewBox.className = 'preview-box';
 
-      // Show file info
       const info = document.createElement('div');
       info.className = 'file-info';
       info.textContent = `File: ${file.name} — Size: ${(file.size / 1024).toFixed(1)} KB`;
 
       previewBox.appendChild(iframe);
       previewBox.appendChild(info);
-      previewContainer.appendChild(previewBox);
-    } catch (error) {
-      alert('Error reading ZIP file: ' + file.name);
-      console.error(error);
+
+      const checkList = document.createElement('ul');
+      checkList.className = 'checklist';
+      checks.forEach(({ label, pass }) => {
+        const li = document.createElement('li');
+        li.textContent = (pass ? '✅' : '❌') + ' ' + label;
+        li.style.color = pass ? 'green' : 'red';
+        checkList.appendChild(li);
+      });
+      previewBox.appendChild(checkList);
+
+      return new Promise(resolve => {
+        iframe.onload = () => {
+          try {
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
+            const width = doc.body.scrollWidth;
+            const height = doc.body.scrollHeight;
+            iframe.style.width = width + 'px';
+            iframe.style.height = height + 'px';
+            previewBox.dataset.width = width;
+            previewBox.dataset.height = height;
+          } catch (e) {
+            console.warn('Sizing iframe failed:', e);
+          }
+          resolve(previewBox);
+        };
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const blobUrl = URL.createObjectURL(blob);
+        iframe.src = blobUrl;
+      });
+
+    } catch (err) {
+      alert('Failed to load ZIP: ' + file.name);
+      console.error(err);
+      return null;
     }
+  }
+
+  function runChecks(htmlContent, zip, htmlFileName) {
+    const results = [];
+
+    const hasGWD = /gwd-/.test(htmlContent);
+    results.push({ label: 'GWD environment check', pass: hasGWD });
+
+    const hardClickTag = /onclick\s*=|http:\/\/clicktag/.test(htmlContent);
+    results.push({ label: 'Hard coded click tag check', pass: !hardClickTag });
+
+    const invalidClickTag = (/clicktag/.test(htmlContent) || /click_tag/.test(htmlContent)) && !/clickTag/.test(htmlContent);
+    results.push({ label: 'Invalid click tag check', pass: !invalidClickTag });
+
+    const referencedAssets = [...htmlContent.matchAll(/(?:src|href)=["']([^"']+)["']/g)]
+      .map(m => m[1].replace(/^\.?\//, ''))
+      .filter(url => !url.startsWith('http') && !url.startsWith('//'));
+    const missingAssets = referencedAssets.some(asset => !(asset in zip.files));
+    results.push({ label: 'Missing asset check', pass: !missingAssets });
+
+    const hasClickTag = /clickTag/.test(htmlContent);
+    results.push({ label: 'Missing click tag check', pass: hasClickTag });
+
+    const hasPrimaryAsset = Object.keys(zip.files).some(name => /\.(jpg|jpeg|png|gif|svg|mp4|webm)$/i.test(name));
+    results.push({ label: 'Missing primary asset check', pass: hasPrimaryAsset });
+
+    const zipAssets = Object.keys(zip.files).filter(n => !zip.files[n].dir && n !== htmlFileName);
+    const orphaned = zipAssets.some(asset => !referencedAssets.includes(asset));
+    results.push({ label: 'Orphaned asset check', pass: !orphaned });
+
+    const relativeAssets = referencedAssets.some(url => url.startsWith('../') || url.startsWith('./') || url.startsWith('/'));
+    results.push({ label: 'Relative asset check', pass: !relativeAssets });
+
+    const insecureUrls = [...htmlContent.matchAll(/(?:src|href)=["'](http:\/\/[^"']+)["']/g)].length > 0;
+    results.push({ label: 'Secure URL check', pass: !insecureUrls });
+
+    const topLevelClickTag = /<body[^>]*>[\s\S]*clickTag[\s\S]*<\/body>/i.test(htmlContent);
+    results.push({ label: 'Top level click tag check', pass: topLevelClickTag });
+
+    results.push({ label: 'Zip file contents check', pass: !!htmlFileName });
+
+    return results;
   }
 </script>
 
