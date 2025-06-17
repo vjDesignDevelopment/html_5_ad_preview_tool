@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTML5 Ad Preview Tool</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #f5f5f5; }
+    .drop-zone { border: 2px dashed #007BFF; padding: 2rem; text-align: center; background: white; cursor: pointer; }
+    iframe { width: 100%; height: 300px; border: 1px solid #ccc; margin-top: 1rem; background: white; }
+    .info { margin-top: 1rem; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>HTML5 Ad Preview Tool</h1>
+  <div id="drop-zone" class="drop-zone">Drag & drop your HTML5 .zip file here or click to upload</div>
+  <input type="file" id="file-input" accept=".zip" style="display: none;" />
+  <div id="info" class="info"></div>
+  <iframe id="preview" sandbox="allow-scripts allow-same-origin"></iframe>
+
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const preview = document.getElementById('preview');
+    const info = document.getElementById('info');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.style.borderColor = '#28a745';
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.borderColor = '#007BFF';
+    });
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.style.borderColor = '#007BFF';
+      handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+
+    function handleFile(file) {
+      if (!file || !file.name.endsWith('.zip')) {
+        info.textContent = 'Please upload a valid .zip file.';
+        return;
+      }
+
+      info.textContent = `Total Size: ${(file.size / 1024).toFixed(2)} KB`;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const zip = await JSZip.loadAsync(e.target.result);
+        const indexFile = zip.file(/index\.html$/i)[0];
+        if (!indexFile) {
+          info.textContent += '\nError: index.html not found in ZIP.';
+          return;
+        }
+
+        const blobUrls = {};
+        await Promise.all(Object.keys(zip.files).map(async filename => {
+          const file = zip.files[filename];
+          if (!file.dir) {
+            const blob = await file.async('blob');
+            blobUrls[filename] = URL.createObjectURL(blob);
+          }
+        }));
+
+        const htmlText = await indexFile.async('text');
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, 'text/html');
+
+        // Rewriting relative paths to blob URLs
+        doc.querySelectorAll('[src], [href]').forEach(el => {
+          const attr = el.hasAttribute('src') ? 'src' : 'href';
+          const val = el.getAttribute(attr);
+          if (blobUrls[val]) {
+            el.setAttribute(attr, blobUrls[val]);
+          }
+        });
+
+        const blob = new Blob([doc.documentElement.outerHTML], { type: 'text/html' });
+        preview.src = URL.createObjectURL(blob);
+      };
+
+      reader.readAsArrayBuffer(file);
+    }
+  </script>
+</body>
+</html>
