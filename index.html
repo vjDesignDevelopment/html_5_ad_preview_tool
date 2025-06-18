@@ -5,53 +5,99 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>HTML5 Ad Preview Tool</title>
   <style>
+    :root {
+      --bg: black;
+      --fg: white;
+      --drop-bg: #1a1a1a;
+      --drop-border: #007BFF;
+      --drop-hover: #003d80;
+      --preview-bg: white;
+      --preview-fg: black;
+      --checklist-bg: #f5f5f5;
+      --checklist-fg: black;
+    }
+
+    body[data-theme="light"] {
+      --bg: #ffffff;
+      --fg: #000000;
+      --drop-bg: #f0f0f0;
+      --drop-border: #007BFF;
+      --drop-hover: #cce0ff;
+      --preview-bg: #ffffff;
+      --preview-fg: #000000;
+      --checklist-bg: #f9f9f9;
+      --checklist-fg: #000000;
+    }
+
     body {
       font-family: Arial, sans-serif;
       padding: 1rem;
       margin: 0 auto;
       box-sizing: border-box;
-      background-color: black;
-      color: white;
+      background-color: var(--bg);
+      color: var(--fg);
+      transition: background-color 0.3s, color 0.3s;
     }
+
     h1 {
       text-align: center;
       font-size: 1.2rem;
       margin-bottom: 1rem;
     }
+
+    #theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      background: none;
+      border: 1px solid var(--fg);
+      color: var(--fg);
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
     #drop-area {
-      border: 3px dashed #007BFF;
+      border: 3px dashed var(--drop-border);
       border-radius: 12px;
       padding: 12px;
       text-align: center;
-      color: #007BFF;
+      color: var(--drop-border);
       cursor: pointer;
       margin-bottom: 1rem;
       font-size: 0.9rem;
-      background-color: #1a1a1a;
+      background-color: var(--drop-bg);
+      transition: background-color 0.3s;
     }
+
     #drop-area.dragover {
-      background-color: #003d80;
+      background-color: var(--drop-hover);
     }
+
     #preview-container {
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
       justify-content: center;
     }
+
     .preview-box {
-      background: white;
-      color: black;
+      background: var(--preview-bg);
+      color: var(--preview-fg);
       padding: 0.5rem;
       border-radius: 8px;
       box-sizing: border-box;
       display: inline-block;
     }
+
     .responsive-iframe-wrapper {
       position: relative;
       width: 100%;
       overflow: hidden;
       border-radius: 8px;
     }
+
     .responsive-iframe-wrapper iframe {
       position: absolute;
       top: 0; left: 0;
@@ -59,25 +105,29 @@
       height: 100%;
       border: none;
     }
+
     .file-info {
       font-size: 0.8rem;
       text-align: center;
       margin: 0.3rem 0;
     }
+
     .checklist {
       font-size: 0.8rem;
-      background: #f5f5f5;
+      background: var(--checklist-bg);
       padding: 0.5rem;
       border-radius: 4px;
-      color: black;
+      color: var(--checklist-fg);
     }
+
     .checklist li.pass { color: green; }
     .checklist li.fail { color: red; }
   </style>
 </head>
-<body>
+<body data-theme="dark">
 
 <h1>HTML5 Ad Preview Tool</h1>
+<button id="theme-toggle">Light Mode</button>
 
 <div id="drop-area">
   Drag & drop your ZIP files here or click to select multiple files
@@ -99,12 +149,21 @@
     [180, 150], [234, 60]
   ];
 
+  // Theme toggle
+  const toggleBtn = document.getElementById('theme-toggle');
+  toggleBtn.addEventListener('click', () => {
+    const current = document.body.getAttribute('data-theme');
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.body.setAttribute('data-theme', next);
+    toggleBtn.textContent = next === 'dark' ? 'Light Mode' : 'Dark Mode';
+  });
+
   dropArea.addEventListener('click', () => fileElem.click());
   dropArea.addEventListener('dragover', e => {
     e.preventDefault();
     dropArea.classList.add('dragover');
   });
-  dropArea.addEventListener('dragleave', e => dropArea.classList.remove('dragover'));
+  dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
   dropArea.addEventListener('drop', e => {
     e.preventDefault();
     dropArea.classList.remove('dragover');
@@ -181,11 +240,9 @@
           const width = doc.body.scrollWidth || 0;
           const height = doc.body.scrollHeight || 0;
 
-          // Resize wrapper to actual ad size
           iframeWrapper.style.width = width + 'px';
           iframeWrapper.style.height = height + 'px';
 
-          // Run validation checks
           runChecks(checklist, {
             size: file.size,
             width,
@@ -208,17 +265,39 @@
   }
 
   function runChecks(list, { size, width, height, html }) {
-    // File size
     const sizeCheck = size <= 150 * 1024;
     addCheck(list, `File size ≤ 150KB`, sizeCheck);
 
-    // IAB size match
     const isIAB = IAB_SIZES.some(([w, h]) => w === width && h === height);
-    addCheck(list, `IAB size match (${width}x${height})`, isIAB);
+    addCheck(list, `Rendered size matches IAB standard (${width}x${height})`, isIAB);
 
-    // clickTag
     const hasClickTag = /clickTag/.test(html) || /window\.clickTag/.test(html);
     addCheck(list, `clickTag present`, hasClickTag);
+
+    const adSizeCheck = validateAdSizeMeta(html);
+    addCheck(list, `Meta tag matches IAB size (${adSizeCheck.message})`, adSizeCheck.valid);
+  }
+
+  function validateAdSizeMeta(html) {
+    const match = html.match(/<meta\s+name=["']ad.size["']\s+content=["']([^"']+)["']/i);
+    if (!match) return { valid: false, message: 'meta tag missing' };
+
+    const content = match[1];
+    const params = Object.fromEntries(content.split(',').map(pair => {
+      const [key, val] = pair.trim().split('=');
+      return [key.trim(), parseInt(val, 10)];
+    }));
+
+    const width = params.width;
+    const height = params.height;
+
+    if (!width || !height) return { valid: false, message: 'invalid width/height' };
+
+    const isMatch = IAB_SIZES.some(([w, h]) => w === width && h === height);
+    return {
+      valid: isMatch,
+      message: isMatch ? `${width}x${height}` : `${width}x${height} not IAB`
+    };
   }
 
   function addCheck(list, label, passed) {
