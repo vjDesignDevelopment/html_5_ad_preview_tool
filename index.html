@@ -7,75 +7,72 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #000;
-      color: #fff;
       padding: 1rem;
       margin: 0 auto;
-      max-width: 1600px;
+      box-sizing: border-box;
+      background-color: black;
+      color: white;
     }
-
     h1 {
       text-align: center;
-      margin-bottom: 1.5rem;
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
     }
-
     #drop-area {
       border: 3px dashed #007BFF;
       border-radius: 12px;
-      padding: 1rem;
+      padding: 12px;
       text-align: center;
       color: #007BFF;
-      margin-bottom: 2rem;
       cursor: pointer;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      background-color: #1a1a1a;
     }
-
     #drop-area.dragover {
-      background-color: #e0f0ff;
+      background-color: #003d80;
     }
-
     #preview-container {
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
-      justify-content: flex-start;
+      justify-content: center;
     }
-
     .preview-box {
-      background: #fff;
-      border-radius: 8px;
-      overflow: hidden;
-      color: #000;
+      background: white;
+      color: black;
       padding: 0.5rem;
+      border-radius: 8px;
       box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      display: inline-block;
     }
-
-    .iframe-wrapper {
+    .responsive-iframe-wrapper {
       position: relative;
-      border: 1px solid #ccc;
+      width: 100%;
       overflow: hidden;
-      border-radius: 6px;
+      border-radius: 8px;
     }
-
-    .iframe-wrapper iframe {
-      border: none;
+    .responsive-iframe-wrapper iframe {
+      position: absolute;
+      top: 0; left: 0;
       width: 100%;
       height: 100%;
-      display: block;
+      border: none;
     }
-
     .file-info {
-      margin-top: 0.5rem;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       text-align: center;
-      color: #333;
+      margin: 0.3rem 0;
     }
-
-    input[type="file"] {
-      display: none;
+    .checklist {
+      font-size: 0.8rem;
+      background: #f5f5f5;
+      padding: 0.5rem;
+      border-radius: 4px;
+      color: black;
     }
+    .checklist li.pass { color: green; }
+    .checklist li.fail { color: red; }
   </style>
 </head>
 <body>
@@ -83,8 +80,8 @@
 <h1>HTML5 Ad Preview Tool</h1>
 
 <div id="drop-area">
-  Drag & drop your ZIP files here or click to select
-  <input type="file" id="fileElem" multiple accept=".zip" />
+  Drag & drop your ZIP files here or click to select multiple files
+  <input type="file" id="fileElem" multiple accept=".zip" style="display:none" />
 </div>
 
 <div id="preview-container"></div>
@@ -95,22 +92,25 @@
   const fileElem = document.getElementById('fileElem');
   const previewContainer = document.getElementById('preview-container');
 
+  const IAB_SIZES = [
+    [300, 250], [728, 90], [160, 600], [300, 600],
+    [970, 250], [336, 280], [320, 50], [300, 50],
+    [468, 60], [250, 250], [200, 200], [120, 600],
+    [180, 150], [234, 60]
+  ];
+
   dropArea.addEventListener('click', () => fileElem.click());
   dropArea.addEventListener('dragover', e => {
     e.preventDefault();
     dropArea.classList.add('dragover');
   });
-  dropArea.addEventListener('dragleave', () => {
-    dropArea.classList.remove('dragover');
-  });
+  dropArea.addEventListener('dragleave', e => dropArea.classList.remove('dragover'));
   dropArea.addEventListener('drop', e => {
     e.preventDefault();
     dropArea.classList.remove('dragover');
     handleFiles(e.dataTransfer.files);
   });
-  fileElem.addEventListener('change', () => {
-    handleFiles(fileElem.files);
-  });
+  fileElem.addEventListener('change', () => handleFiles(fileElem.files));
 
   async function handleFiles(files) {
     previewContainer.innerHTML = '';
@@ -127,38 +127,40 @@
     const zip = new JSZip();
     try {
       const content = await zip.loadAsync(file);
-      const blobMap = {};
-
-      await Promise.all(Object.keys(content.files).map(async name => {
-        const f = content.files[name];
-        if (!f.dir) {
-          const blob = await f.async('blob');
-          blobMap[name] = URL.createObjectURL(blob);
+      const blobUrlMap = {};
+      const filePromises = Object.keys(content.files).map(async fileName => {
+        const fileObj = content.files[fileName];
+        if (!fileObj.dir) {
+          const data = await fileObj.async('blob');
+          const url = URL.createObjectURL(data);
+          blobUrlMap[fileName] = url;
         }
-      }));
+      });
+      await Promise.all(filePromises);
 
-      let htmlFileName = Object.keys(content.files).find(n => n.endsWith('.html'));
+      const htmlFileName = Object.keys(content.files).find(name => name.endsWith('.html'));
       if (!htmlFileName) {
-        alert('No HTML file found in ZIP: ' + file.name);
+        alert('No HTML file found inside ZIP: ' + file.name);
         return;
       }
+      const htmlFile = content.files[htmlFileName];
+      let htmlContent = await htmlFile.async('text');
 
-      let html = await content.files[htmlFileName].async('text');
-      html = html.replace(/(src|href)=["']([^"']+)["']/g, (match, attr, path) => {
-        if (path.startsWith('http') || path.startsWith('//')) return match;
-        const cleanPath = path.replace(/^\.\/|^\//, '');
-        return blobMap[cleanPath] ? `${attr}="${blobMap[cleanPath]}"` : match;
+      const originalHtml = htmlContent; // for validation
+
+      htmlContent = htmlContent.replace(/(src|href)=["']([^"']+)["']/g, (match, attr, url) => {
+        if (url.startsWith('http') || url.startsWith('//')) return match;
+        let normalizedUrl = url.replace(/^\.\//, '').replace(/^\//, '');
+        return blobUrlMap[normalizedUrl] ? `${attr}="${blobUrlMap[normalizedUrl]}"` : match;
       });
 
-      const blob = new Blob([html], { type: 'text/html' });
       const iframe = document.createElement('iframe');
-      iframe.src = URL.createObjectURL(blob);
+      const iframeWrapper = document.createElement('div');
+      iframeWrapper.className = 'responsive-iframe-wrapper';
 
       const previewBox = document.createElement('div');
       previewBox.className = 'preview-box';
 
-      const iframeWrapper = document.createElement('div');
-      iframeWrapper.className = 'iframe-wrapper';
       iframeWrapper.appendChild(iframe);
       previewBox.appendChild(iframeWrapper);
 
@@ -167,28 +169,63 @@
       info.textContent = `File: ${file.name} — ${(file.size / 1024).toFixed(1)} KB`;
       previewBox.appendChild(info);
 
+      const checklist = document.createElement('ul');
+      checklist.className = 'checklist';
+      previewBox.appendChild(checklist);
+
       previewContainer.appendChild(previewBox);
 
       iframe.onload = () => {
         try {
           const doc = iframe.contentDocument || iframe.contentWindow.document;
-          const body = doc.body;
-          const w = body.scrollWidth || 300;
-          const h = body.scrollHeight || 250;
+          const width = doc.body.scrollWidth || 0;
+          const height = doc.body.scrollHeight || 0;
 
-          iframeWrapper.style.width = w + 'px';
-          iframeWrapper.style.height = h + 'px';
+          // Resize wrapper to actual ad size
+          iframeWrapper.style.width = width + 'px';
+          iframeWrapper.style.height = height + 'px';
+
+          // Run validation checks
+          runChecks(checklist, {
+            size: file.size,
+            width,
+            height,
+            html: originalHtml
+          });
+
         } catch (e) {
-          console.warn('Sizing error:', e);
-          iframeWrapper.style.width = '300px';
-          iframeWrapper.style.height = '250px';
+          console.warn('Could not inspect iframe content.', e);
         }
       };
 
-    } catch (err) {
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      iframe.src = URL.createObjectURL(blob);
+
+    } catch (error) {
       alert('Error reading ZIP file: ' + file.name);
-      console.error(err);
+      console.error(error);
     }
+  }
+
+  function runChecks(list, { size, width, height, html }) {
+    // File size
+    const sizeCheck = size <= 150 * 1024;
+    addCheck(list, `File size ≤ 150KB`, sizeCheck);
+
+    // IAB size match
+    const isIAB = IAB_SIZES.some(([w, h]) => w === width && h === height);
+    addCheck(list, `IAB size match (${width}x${height})`, isIAB);
+
+    // clickTag
+    const hasClickTag = /clickTag/.test(html) || /window\.clickTag/.test(html);
+    addCheck(list, `clickTag present`, hasClickTag);
+  }
+
+  function addCheck(list, label, passed) {
+    const li = document.createElement('li');
+    li.textContent = (passed ? '✅ ' : '❌ ') + label;
+    li.className = passed ? 'pass' : 'fail';
+    list.appendChild(li);
   }
 </script>
 
