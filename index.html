@@ -8,7 +8,7 @@
   body {
     font-family: Arial, sans-serif;
     padding: 1rem;
-    width: 2000px;
+    max-width: 100%; /* changed from fixed 2000px to allow responsive */
     margin: 1rem auto;
     box-sizing: border-box;
     background-color: black;
@@ -17,6 +17,7 @@
     text-align: center;
     font-size: 1.2rem;
     margin-bottom: 1rem;
+    color: white;
   }
   #drop-area {
     border: 3px dashed #007BFF;
@@ -42,22 +43,37 @@
     box-sizing: border-box;
     border-radius: 8px;
     overflow: auto;
-    max-height: 400px; /* limit vertical height with scroll */
-    width: 100%; /* fill 200px body width */
-  }
-  iframe {
+    /* Removed max-height to let iframe wrapper control sizing */
     width: 100%;
-    height: auto;
+    background-color: white;
+  }
+
+  /* Responsive iframe container to maintain aspect ratio */
+  .responsive-iframe-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 400px; /* limit max width of preview */
+    margin: 0 auto;
+    overflow: hidden;
+    border-radius: 8px;
+    box-sizing: border-box;
+    /* height controlled dynamically */
+  }
+
+  .responsive-iframe-wrapper iframe {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
     border: none;
     display: block;
-    /* Try to keep aspect ratio and make responsive */
-    aspect-ratio: 16 / 9; /* fallback, will be overridden dynamically */
-    max-height: 100%;
   }
+
   .file-info {
     font-size: 0.8rem;
     margin-top: 0.3rem;
     text-align: center;
+    color: #333;
   }
 </style>
 </head>
@@ -155,55 +171,44 @@
       const previewBox = document.createElement('div');
       previewBox.className = 'preview-box';
 
+      // Responsive iframe wrapper
+      const iframeWrapper = document.createElement('div');
+      iframeWrapper.className = 'responsive-iframe-wrapper';
+
+      // Append iframe inside the wrapper
+      iframeWrapper.appendChild(iframe);
+
       // Show file info
       const info = document.createElement('div');
       info.className = 'file-info';
       info.textContent = `File: ${file.name} — Size: ${(file.size / 1024).toFixed(1)} KB`;
 
-      previewBox.appendChild(iframe);
+      previewBox.appendChild(iframeWrapper);
       previewBox.appendChild(info);
       previewContainer.appendChild(previewBox);
 
-      // Wait for iframe to load content to get natural width and height
-      await new Promise((resolve) => {
-        iframe.onload = () => {
-          try {
-            const doc = iframe.contentDocument || iframe.contentWindow.document;
-            const body = doc.body;
+      // After iframe loads, dynamically set padding-bottom for aspect ratio
+      iframe.onload = () => {
+        try {
+          const doc = iframe.contentDocument || iframe.contentWindow.document;
+          const body = doc.body;
 
-            // Get actual banner width and height inside iframe
-            const naturalWidth = body.scrollWidth;
-            const naturalHeight = body.scrollHeight;
+          const naturalWidth = body.scrollWidth || 300;
+          const naturalHeight = body.scrollHeight || 150;
 
-            // Calculate aspect ratio
-            const aspectRatio = naturalWidth / naturalHeight || 1;
+          // aspectRatio = height / width (for padding-bottom %)
+          const aspectRatio = naturalHeight / naturalWidth || 0.5;
 
-            // Set iframe aspect ratio and height dynamically for responsiveness
-            iframe.style.aspectRatio = aspectRatio;
+          // Set padding-bottom in % for aspect ratio (height/width * 100%)
+          iframeWrapper.style.paddingBottom = (aspectRatio * 100) + '%';
+        } catch (e) {
+          console.warn('Error sizing iframe:', e);
+          iframeWrapper.style.paddingBottom = '56.25%'; // fallback 16:9 ratio
+        }
+      };
 
-            // Limit max height to 400px and scale width accordingly
-            const maxHeight = 400;
-            let height = Math.min(naturalHeight, maxHeight);
-            let width = height * aspectRatio;
-
-            // If width > container width (200px), scale down to fit container width
-            const containerWidth = previewBox.clientWidth || 200;
-            if (width > containerWidth) {
-              width = containerWidth;
-              height = width / aspectRatio;
-            }
-
-            iframe.style.width = width + 'px';
-            iframe.style.height = height + 'px';
-          } catch (e) {
-            console.warn('Error sizing iframe:', e);
-          }
-          resolve();
-        };
-
-        const blob = new Blob([htmlContent], { type: 'text/html' });
-        iframe.src = URL.createObjectURL(blob);
-      });
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      iframe.src = URL.createObjectURL(blob);
 
     } catch (error) {
       alert('Error reading ZIP file: ' + file.name);
