@@ -1,0 +1,117 @@
+:root {
+  --bg: black;
+  --fg: white;
+  --drop-bg: #1a1a1a;
+  --drop-border: #007BFF;
+  --drop-hover: #003d80;
+  --preview-bg: white;
+  --preview-fg: black;
+  --checklist-bg: #f5f5f5;
+  --checklist-fg: black;
+}
+
+body[data-theme="light"] {
+  --bg: #ffffff;
+  --fg: #000000;
+  --drop-bg: #f0f0f0;
+  --drop-border: #007BFF;
+  --drop-hover: #cce0ff;
+  --preview-bg: #ffffff;
+  --preview-fg: #000000;
+  --checklist-bg: #f9f9f9;
+  --checklist-fg: #000000;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  padding: 1rem;
+  margin: 0 auto;
+  box-sizing: border-box;
+  background-color: var(--bg);
+  color: var(--fg);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+h1 {
+  text-align: center;
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+#theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: 1px solid var(--fg);
+  color: var(--fg);
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+#drop-area {
+  border: 3px dashed var(--drop-border);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
+  color: var(--drop-border);
+  cursor: pointer;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  background-color: var(--drop-bg);
+  transition: background-color 0.3s;
+}
+
+#drop-area.dragover {
+  background-color: var(--drop-hover);
+}
+
+#preview-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.preview-box {
+  background: var(--preview-bg);
+  color: var(--preview-fg);
+  padding: 0.5rem;
+  border-radius: 8px;
+  box-sizing: border-box;
+  display: inline-block;
+}
+
+.responsive-iframe-wrapper {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.responsive-iframe-wrapper iframe {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.file-info {
+  font-size: 0.8rem;
+  text-align: center;
+  margin: 0.3rem 0;
+}
+
+.checklist {
+  font-size: 0.8rem;
+  background: var(--checklist-bg);
+  padding: 0.5rem;
+  border-radius: 4px;
+  color: var(--checklist-fg);
+}
+
+.checklist li.pass { color: green; }
+.checklist li.fail { color: red; }
